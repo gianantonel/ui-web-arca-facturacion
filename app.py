@@ -20,8 +20,10 @@ WEBHOOK_URL = "https://n8n.optimizar-ia.com/webhook/06cf93de-06f0-42ac-b859-9424
 
 IVA_RATE = 0.21
 
+# Listado de opciones de Tipo de Factura según AFIP
 TIPO_FACTURA_OPTIONS = ["Factura A", "Factura B", "Factura C"]
 
+# Listado de opciones de Condición frente al IVA según AFIP
 IVA_OPTIONS = [
     "IVA Responsable Inscripto",
     "IVA Sujeto Exento",
@@ -36,6 +38,7 @@ IVA_OPTIONS = [
     "Monotributo Trabajador Independiente Promovido",
 ]
 
+# Listado de opciones de Condición de Venta según AFIP
 COND_VENTA_OPTIONS = [
     "Contado",
     "Cuenta Corriente",
@@ -48,8 +51,10 @@ COND_VENTA_OPTIONS = [
     "Otra",
 ]
 
+# Listado de opciones de Servicio/Producto según AFIP
 SERVICIO_PRODUCTO_OPTIONS = ["Producto", "Servicio", "Producto/Servicio"]
 
+# Listado de Unidades de Medida según AFIP
 UNIDADES_MEDIDA = [
     "Sin descripción",
     "Kilogramo",
@@ -822,7 +827,7 @@ def page_review():
 def send_to_webhook(payload: dict) -> dict:
     payload = make_json_safe(payload)  # seguridad extra
     try:
-        r = requests.post(WEBHOOK_URL, json=payload, timeout=30)
+        r = requests.post(WEBHOOK_URL, json=payload, timeout=300)
         content_type = (r.headers.get("content-type") or "").lower()
         if "application/json" in content_type:
             body = r.json()

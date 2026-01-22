@@ -1,0 +1,58 @@
+{
+  "emisor": {
+    "razon_social": "Gianfranco Esteban Antonel",
+    "cuit": "23346897899",
+    "domicilio": "Pje Cabral 796",
+    "condicion_iva": "Responsable Monotributo",
+    "requiere_delegacion": false,
+    "clave_fiscal": ""
+  },
+  "receptor": {
+    "razon_social": "Tomás De La Serna",
+    "cuit_dni": "20330441144",
+    "domicilio": "",
+    "condicion_iva": "Responsable Monotributo",
+    "condicion_venta": "Contado"
+  },
+  "datos_facturacion": {
+    "tipo_factura": "Factura C",
+    "servicio_producto": "Servicio",
+    "fecha_inicio": "19/01/2026",
+    "fecha_fin": "19/01/2026",
+    "fecha_vencimiento": "21/01/2026"
+  },
+  "items": [
+    {
+      "uid": "d343399f-243f-42fa-ad35-3a79e6991d04",
+      "codigo": "",
+      "descripcion": "Nueva Prueba de facturacion automatizada con IA via AFIP SDK QA con fechas",
+      "cantidad": 1.0,
+      "unidad_medida": "Unidad",
+      "precio_modo": "con_iva",
+      "precio_unitario": 580.0,
+      "descuento_bonificacion": null
+    }
+  ],
+  "meta": {
+    "created_at": "2026-01-19T17:16:11",
+    "source": "streamlit_ui"
+  },
+  "totales": {
+    "moneda": "ARS",
+    "tipo_factura": "Factura C",
+    "total_neto": 580.0,
+    "total_iva_21": 0.0,
+    "total": 580.0,
+    "items_calculados": [
+      {
+        "unit_net": 580.0,
+        "unit_iva": 0.0,
+        "unit_gross": 580.0,
+        "subtotal_net": 580.0,
+        "subtotal_iva": 0.0,
+        "subtotal_gross": 580.0
+      }
+    ],
+    "nota": "Factura A/B: total = neto + IVA 21%. Factura C: sin desglose de IVA."
+  }
+}
