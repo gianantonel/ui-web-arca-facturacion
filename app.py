@@ -1,3 +1,4 @@
+# app.py
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -16,10 +17,13 @@ from utils import (
 )
 
 WEBHOOK_URL = "https://n8n.optimizar-ia.com/webhook/06cf93de-06f0-42ac-b859-9424155fa9b7"
+
 IVA_RATE = 0.21
 
+# Listado de opciones de Tipo de Factura según AFIP
 TIPO_FACTURA_OPTIONS = ["Factura A", "Factura B", "Factura C"]
 
+# Listado de opciones de Condición frente al IVA según AFIP
 IVA_OPTIONS = [
     "IVA Responsable Inscripto",
     "IVA Sujeto Exento",
@@ -34,6 +38,7 @@ IVA_OPTIONS = [
     "Monotributo Trabajador Independiente Promovido",
 ]
 
+# Listado de opciones de Condición de Venta según AFIP
 COND_VENTA_OPTIONS = [
     "Contado",
     "Cuenta Corriente",
@@ -46,8 +51,10 @@ COND_VENTA_OPTIONS = [
     "Otra",
 ]
 
+# Listado de opciones de Servicio/Producto según AFIP
 SERVICIO_PRODUCTO_OPTIONS = ["Producto", "Servicio", "Producto/Servicio"]
 
+# Listado de Unidades de Medida según AFIP
 UNIDADES_MEDIDA = [
     "Sin descripción",
     "Kilogramo",
@@ -112,7 +119,9 @@ def _date_to_str(d: date) -> str:
 
 
 def make_json_safe(obj):
-    """Convierte recursivamente objetos no serializables (date/datetime) a string."""
+    """
+    Convierte recursivamente objetos no serializables (date/datetime) a string.
+    """
     if isinstance(obj, (date, datetime)):
         return _date_to_str(obj.date() if isinstance(obj, datetime) else obj)
     if isinstance(obj, dict):
@@ -154,12 +163,11 @@ def init_state():
             "fecha_vencimiento": today,
         }
     else:
+        # asegurar llaves (migración)
         today = date.today()
         st.session_state["facturacion"].setdefault("fecha_inicio", today)
         st.session_state["facturacion"].setdefault("fecha_fin", today)
         st.session_state["facturacion"].setdefault("fecha_vencimiento", today)
-        st.session_state["facturacion"].setdefault("tipo_factura", None)
-        st.session_state["facturacion"].setdefault("servicio_producto", None)
 
     if "emisor" not in st.session_state:
         st.session_state["emisor"] = {
@@ -183,6 +191,7 @@ def init_state():
     if "items" not in st.session_state:
         st.session_state["items"] = [_new_item()]
     else:
+        # migración: asegurar uid en items ya existentes
         fixed = []
         for it in st.session_state["items"]:
             if not isinstance(it, dict):
@@ -214,7 +223,7 @@ def fmt_money(value: float) -> str:
 
 
 def header():
-    st.title("Bienvenido Gabi a tu portal de Facturación automatizada !  by Optimizar-ia ")
+    st.title("Bienvenido Gabi a tu prtal de Facturación automatizada !  by Optimizar-ia ")
     st.subheader("Ingresa los datos de la factura que deseas realizar:")
     st.divider()
 
@@ -323,402 +332,605 @@ def compute_totals(items_list: list[dict], tipo_factura: str | None) -> tuple[li
 # SECTIONS
 # -----------------------------
 def render_tipo_factura():
-    st.subheader("1) Tipo de factura y fechas")
-
-    fac = st.session_state["facturacion"]
-
-    c1, c2 = st.columns(2)
-    with c1:
-        fac["tipo_factura"] = st.selectbox(
-            "Tipo de factura",
-            options=[None] + TIPO_FACTURA_OPTIONS,
-            index=0 if fac.get("tipo_factura") is None else ([None] + TIPO_FACTURA_OPTIONS).index(fac["tipo_factura"]),
-        )
-    with c2:
-        fac["servicio_producto"] = st.selectbox(
-            "Producto / Servicio",
-            options=[None] + SERVICIO_PRODUCTO_OPTIONS,
-            index=0
-            if fac.get("servicio_producto") is None
-            else ([None] + SERVICIO_PRODUCTO_OPTIONS).index(fac["servicio_producto"]),
-        )
-
-    c3, c4, c5 = st.columns(3)
-    with c3:
-        fac["fecha_inicio"] = st.date_input("Fecha inicio", value=fac.get("fecha_inicio", date.today()))
-    with c4:
-        fac["fecha_fin"] = st.date_input("Fecha fin", value=fac.get("fecha_fin", date.today()))
-    with c5:
-        fac["fecha_vencimiento"] = st.date_input("Fecha vencimiento", value=fac.get("fecha_vencimiento", date.today()))
-
-    st.session_state["facturacion"] = fac
-    st.divider()
+    st.markdown("### Tipo de Factura")
+    st.session_state["facturacion"]["tipo_factura"] = st.selectbox(
+        "Tipo de Factura *",
+        options=["(Seleccionar)"] + TIPO_FACTURA_OPTIONS,
+        index=0
+        if not st.session_state["facturacion"]["tipo_factura"]
+        else (TIPO_FACTURA_OPTIONS.index(st.session_state["facturacion"]["tipo_factura"]) + 1),
+        key="tipo_factura",
+    )
+    if st.session_state["facturacion"]["tipo_factura"] == "(Seleccionar)":
+        st.session_state["facturacion"]["tipo_factura"] = None
 
 
 def render_emisor():
-    st.subheader("2) Datos del emisor")
+    st.markdown("### Emisor")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state["emisor"]["razon_social"] = st.text_input(
+            "Nombre/razón social *", value=st.session_state["emisor"]["razon_social"], key="em_rs"
+        )
+    with col2:
+        st.session_state["emisor"]["cuit"] = st.text_input(
+            "CUIT * (Solo colocar números sin guiones)",
+            value=st.session_state["emisor"]["cuit"],
+            help="Solo números, sin guiones.",
+            on_change=set_digits_field,
+            args=("emisor.cuit",),
+            key="em_cuit",
+        )
+        if st.session_state["emisor"]["cuit"] and not is_digits_only(st.session_state["emisor"]["cuit"]):
+            st.warning("El CUIT solo puede contener números. Se limpiaron caracteres inválidos.")
 
-    em = st.session_state["emisor"]
-
-    em["razon_social"] = st.text_input("Razón social (Emisor)", value=em.get("razon_social", ""))
-    em["cuit"] = st.text_input("CUIT (solo números)", value=em.get("cuit", ""), on_change=set_digits_field, args=("emisor.cuit",))
-    em["domicilio"] = st.text_input("Domicilio (Emisor)", value=em.get("domicilio", ""))
-
-    em["condicion_iva"] = st.selectbox(
-        "Condición frente al IVA (Emisor)",
-        options=[None] + IVA_OPTIONS,
-        index=0 if em.get("condicion_iva") is None else ([None] + IVA_OPTIONS).index(em["condicion_iva"]),
+    st.session_state["emisor"]["domicilio"] = st.text_input(
+        "Domicilio (Opcional)", value=st.session_state["emisor"]["domicilio"], key="em_dom"
     )
 
-    em["requiere_delegacion"] = st.checkbox(
-        "Requiere delegación / clave fiscal",
-        value=bool(em.get("requiere_delegacion", False)),
+    st.session_state["emisor"]["condicion_iva"] = st.selectbox(
+        "Condición frente al IVA *",
+        options=["(Seleccionar)"] + IVA_OPTIONS,
+        index=0
+        if not st.session_state["emisor"]["condicion_iva"]
+        else (IVA_OPTIONS.index(st.session_state["emisor"]["condicion_iva"]) + 1),
+        key="em_iva",
     )
+    if st.session_state["emisor"]["condicion_iva"] == "(Seleccionar)":
+        st.session_state["emisor"]["condicion_iva"] = None
 
-    if em["requiere_delegacion"]:
-        em["clave_fiscal"] = st.text_input("Clave fiscal (si aplica)", value=em.get("clave_fiscal", ""), type="password")
-
-    st.session_state["emisor"] = em
     st.divider()
+    st.info(
+        "En caso de requerir Delegación de servicios  tildar esta casilla (por única vez) "
+        "y deberá ingresar por única vez la Clave Fiscal del Emisor."
+    )
+    st.session_state["emisor"]["requiere_delegacion"] = st.checkbox(
+        "Requiere Delegación de servicios (por única vez)",
+        value=bool(st.session_state["emisor"].get("requiere_delegacion", False)),
+        key="em_req_del",
+    )
+
+    if st.session_state["emisor"]["requiere_delegacion"]:
+        st.session_state["emisor"]["clave_fiscal"] = st.text_input(
+            "Clave Fiscal del Emisor *",
+            value=st.session_state["emisor"].get("clave_fiscal", ""),
+            type="password",
+            key="em_clave",
+        )
+    else:
+        st.session_state["emisor"]["clave_fiscal"] = ""
 
 
 def render_receptor():
-    st.subheader("3) Datos del receptor")
+    st.markdown("### Receptor")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state["receptor"]["razon_social"] = st.text_input(
+            "Nombre/razón social *",
+            value=st.session_state["receptor"]["razon_social"],
+            key="rec_rs",
+        )
+    with col2:
+        st.session_state["receptor"]["cuit_dni"] = st.text_input(
+            "CUIT/DNI * (Solo colocar números sin guiones)",
+            value=st.session_state["receptor"]["cuit_dni"],
+            help="Solo números, sin guiones.",
+            on_change=set_digits_field,
+            args=("receptor.cuit_dni",),
+            key="rec_cuit",
+        )
+        if st.session_state["receptor"]["cuit_dni"] and not is_digits_only(st.session_state["receptor"]["cuit_dni"]):
+            st.warning("El CUIT/DNI solo puede contener números. Se limpiaron caracteres inválidos.")
 
-    re = st.session_state["receptor"]
-
-    re["razon_social"] = st.text_input("Razón social (Receptor)", value=re.get("razon_social", ""))
-    re["cuit_dni"] = st.text_input(
-        "CUIT / DNI (solo números)",
-        value=re.get("cuit_dni", ""),
-        on_change=set_digits_field,
-        args=("receptor.cuit_dni",),
+    st.session_state["receptor"]["domicilio"] = st.text_input(
+        "Domicilio (Opcional)", value=st.session_state["receptor"]["domicilio"], key="rec_dom"
     )
-    re["domicilio"] = st.text_input("Domicilio (Receptor)", value=re.get("domicilio", ""))
 
-    c1, c2 = st.columns(2)
-    with c1:
-        re["condicion_iva"] = st.selectbox(
-            "Condición frente al IVA (Receptor)",
-            options=[None] + IVA_OPTIONS,
-            index=0 if re.get("condicion_iva") is None else ([None] + IVA_OPTIONS).index(re["condicion_iva"]),
-        )
-    with c2:
-        re["condicion_venta"] = st.selectbox(
-            "Condición de venta",
-            options=[None] + COND_VENTA_OPTIONS,
-            index=0
-            if re.get("condicion_venta") is None
-            else ([None] + COND_VENTA_OPTIONS).index(re["condicion_venta"]),
-        )
+    st.session_state["receptor"]["condicion_iva"] = st.selectbox(
+        "Condición frente al IVA *",
+        options=["(Seleccionar)"] + IVA_OPTIONS,
+        index=0
+        if not st.session_state["receptor"]["condicion_iva"]
+        else (IVA_OPTIONS.index(st.session_state["receptor"]["condicion_iva"]) + 1),
+        key="rec_iva",
+    )
+    if st.session_state["receptor"]["condicion_iva"] == "(Seleccionar)":
+        st.session_state["receptor"]["condicion_iva"] = None
 
-    st.session_state["receptor"] = re
-    st.divider()
+    st.session_state["receptor"]["condicion_venta"] = st.selectbox(
+        "Condición de venta *",
+        options=["(Seleccionar)"] + COND_VENTA_OPTIONS,
+        index=0
+        if not st.session_state["receptor"]["condicion_venta"]
+        else (COND_VENTA_OPTIONS.index(st.session_state["receptor"]["condicion_venta"]) + 1),
+        key="rec_cv",
+    )
+    if st.session_state["receptor"]["condicion_venta"] == "(Seleccionar)":
+        st.session_state["receptor"]["condicion_venta"] = None
+
+
+def render_facturacion():
+    st.markdown("### Datos de Facturación")
+    st.session_state["facturacion"]["servicio_producto"] = st.selectbox(
+        "Servicio/Producto *",
+        options=["(Seleccionar)"] + SERVICIO_PRODUCTO_OPTIONS,
+        index=0
+        if not st.session_state["facturacion"]["servicio_producto"]
+        else (SERVICIO_PRODUCTO_OPTIONS.index(st.session_state["facturacion"]["servicio_producto"]) + 1),
+        key="sp",
+    )
+    if st.session_state["facturacion"]["servicio_producto"] == "(Seleccionar)":
+        st.session_state["facturacion"]["servicio_producto"] = None
+
+    st.markdown("#### Fechas")
+    f1, f2, f3 = st.columns(3)
+    with f1:
+        st.session_state["facturacion"]["fecha_inicio"] = st.date_input(
+            "Fecha de inicio *",
+            value=st.session_state["facturacion"]["fecha_inicio"],
+            format="DD/MM/YYYY",
+            key="fecha_inicio",
+        )
+    with f2:
+        st.session_state["facturacion"]["fecha_fin"] = st.date_input(
+            "Fecha de fin *",
+            value=st.session_state["facturacion"]["fecha_fin"],
+            format="DD/MM/YYYY",
+            key="fecha_fin",
+        )
+    with f3:
+        st.session_state["facturacion"]["fecha_vencimiento"] = st.date_input(
+            "Fecha de vencimiento *",
+            value=st.session_state["facturacion"]["fecha_vencimiento"],
+            format="DD/MM/YYYY",
+            key="fecha_vencimiento",
+        )
 
 
 def render_items():
-    st.subheader("4) Ítems de la factura")
+    st.markdown("### Items a facturar")
 
-    tipo_factura = st.session_state["facturacion"].get("tipo_factura")
-    items = st.session_state["items"]
+    items_list = st.session_state["items"]
+    tipo_factura = st.session_state["facturacion"]["tipo_factura"]
+    con_iva = is_factura_con_iva(tipo_factura)
 
-    # Botones arriba
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        if st.button("➕ Agregar ítem"):
-            items.append(_new_item())
-            st.session_state["items"] = items
-            st.rerun()
-    with c2:
-        st.caption("El descuento/bonificación es un MONTO (no porcentaje). En Factura A/B podés elegir precio con o sin IVA.")
+    if con_iva:
+        st.caption("Factura A/B: podés ingresar **Precio Unitario con IVA** o **Precio sin IVA** (se aplica IVA 21%).")
+    else:
+        st.caption("Factura C: el precio se toma como final (sin desglose de IVA).")
 
-    # Render de cada ítem
-    for idx, it in enumerate(items):
+    # Render por item (con keys basadas en uid para que no se pierda estado)
+    for it in list(items_list):
+        uid = it["uid"]
+
         with st.container(border=True):
-            st.markdown(f"**Ítem {idx+1}**")
+            st.markdown("**Item**")
 
-            a, b = st.columns([2, 1])
-            with a:
-                it["descripcion"] = st.text_input(
-                    "Descripción",
-                    value=it.get("descripcion", ""),
-                    key=f"desc_{it['uid']}",
-                )
-                it["codigo"] = st.text_input(
-                    "Código (opcional)",
-                    value=it.get("codigo", ""),
-                    key=f"cod_{it['uid']}",
-                )
-
-            with b:
-                it["unidad_medida"] = st.selectbox(
-                    "Unidad de medida",
-                    options=UNIDADES_MEDIDA,
-                    index=UNIDADES_MEDIDA.index(it.get("unidad_medida", "Unidad"))
-                    if it.get("unidad_medida", "Unidad") in UNIDADES_MEDIDA
-                    else UNIDADES_MEDIDA.index("Unidad"),
-                    key=f"um_{it['uid']}",
-                )
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c1:
+                it["codigo"] = st.text_input("Código (Opcional)", value=it.get("codigo", ""), key=f"{uid}_cod")
+            with c2:
+                it["descripcion"] = st.text_input("Descripción *", value=it.get("descripcion", ""), key=f"{uid}_desc")
+            with c3:
                 it["cantidad"] = st.number_input(
-                    "Cantidad",
+                    "Cantidad *",
                     min_value=0.0,
                     value=float(it.get("cantidad", 1.0) or 1.0),
                     step=1.0,
-                    key=f"qty_{it['uid']}",
+                    key=f"{uid}_qty",
                 )
 
-            c3, c4, c5 = st.columns([1.2, 1.2, 1.0])
-            with c3:
-                if is_factura_con_iva(tipo_factura):
-                    it["precio_modo"] = st.radio(
-                        "Precio ingresado",
-                        options=["con_iva", "sin_iva"],
-                        format_func=lambda x: "Con IVA" if x == "con_iva" else "Sin IVA",
-                        horizontal=True,
-                        index=0 if it.get("precio_modo", "con_iva") == "con_iva" else 1,
-                        key=f"pm_{it['uid']}",
-                    )
-                else:
-                    it["precio_modo"] = "con_iva"
-                    st.text_input("Precio ingresado", value="(Factura C) Total", disabled=True, key=f"pmc_{it['uid']}")
-
+            c4, c5, c6 = st.columns([2, 1, 1])
             with c4:
-                it["precio_unitario"] = st.number_input(
-                    "Precio unitario",
-                    min_value=0.0,
-                    value=float(it.get("precio_unitario", 0.0) or 0.0),
-                    step=100.0,
-                    key=f"pu_{it['uid']}",
-                )
-            with c5:
-                it["descuento_bonificacion"] = st.text_input(
-                    "Desc./Bonif. (monto)",
-                    value=str(it.get("descuento_bonificacion", "")),
-                    key=f"disc_{it['uid']}",
-                    help="Ej: 1500 o 1500,50",
+                it["unidad_medida"] = st.selectbox(
+                    "Unidad de medida *",
+                    options=UNIDADES_MEDIDA,
+                    index=UNIDADES_MEDIDA.index(it.get("unidad_medida", "Unidad"))
+                    if it.get("unidad_medida", "Unidad") in UNIDADES_MEDIDA
+                    else 0,
+                    key=f"{uid}_um",
                 )
 
-            # Cálculo y vista rápida
-            amounts, err = compute_item_amounts(it, tipo_factura)
-            if err:
-                st.warning(err)
-            else:
-                if is_factura_con_iva(tipo_factura):
-                    st.caption(
-                        f"Neto unit.: ${fmt_money(amounts['unit_net'])} | IVA unit.: ${fmt_money(amounts['unit_iva'])} | Total unit.: ${fmt_money(amounts['unit_gross'])}"
+            if con_iva:
+                with c5:
+                    modo_label = st.selectbox(
+                        "Modo de precio *",
+                        options=["Precio unitario final (con IVA)", "Precio unitario sin IVA"],
+                        index=0 if it.get("precio_modo", "con_iva") == "con_iva" else 1,
+                        key=f"{uid}_modo",
                     )
+                    it["precio_modo"] = "con_iva" if modo_label.startswith("Precio unitario final") else "sin_iva"
+                with c6:
+                    it["precio_unitario"] = st.number_input(
+                        "Precio Unitario *",
+                        min_value=0.0,
+                        value=float(it.get("precio_unitario", 0.0) or 0.0),
+                        step=1.0,
+                        key=f"{uid}_pu",
+                    )
+            else:
+                with c5:
+                    it["precio_modo"] = "con_iva"
+                    it["precio_unitario"] = st.number_input(
+                        "Precio Unitario *",
+                        min_value=0.0,
+                        value=float(it.get("precio_unitario", 0.0) or 0.0),
+                        step=1.0,
+                        key=f"{uid}_pu",
+                    )
+                with c6:
+                    st.write("")
+
+            it["descuento_bonificacion"] = st.text_input(
+                "Descuento/Bonificación (Opcional)",
+                value=str(it.get("descuento_bonificacion", "") or ""),
+                help="Podés usar coma o punto (ej: 10,5). Se interpreta como MONTO (no porcentaje).",
+                key=f"{uid}_descbon",
+            )
+
+            # Subtotal del item calculado con los valores ya leídos
+            am, err = compute_item_amounts(it, tipo_factura)
+            if err or not am:
+                st.warning("Subtotal: no disponible (revisá cantidad/precio/descuento)")
+            else:
+                if con_iva:
                     st.caption(
-                        f"Subtotal neto: ${fmt_money(amounts['subtotal_net'])} | IVA: ${fmt_money(amounts['subtotal_iva'])} | Total: ${fmt_money(amounts['subtotal_gross'])}"
+                        f"Subtotal Neto: {fmt_money(float(am.get('subtotal_net', 0.0)))}  |  "
+                        f"IVA 21%: {fmt_money(float(am.get('subtotal_iva', 0.0)))}  |  "
+                        f"Subtotal Total: {fmt_money(float(am.get('subtotal_gross', 0.0)))}"
                     )
                 else:
-                    st.caption(f"Subtotal: ${fmt_money(amounts['subtotal_gross'])}")
+                    st.caption(f"Subtotal: {fmt_money(float(am.get('subtotal_gross', 0.0)))}")
 
-            # Botón borrar
-            if len(items) > 1:
-                if st.button("🗑️ Eliminar este ítem", key=f"del_{it['uid']}"):
-                    st.session_state["items"] = [x for x in items if x.get("uid") != it.get("uid")]
+            col_del, _ = st.columns([1, 5])
+            with col_del:
+                if len(items_list) > 1 and st.button("Eliminar item", key=f"{uid}_del"):
+                    st.session_state["items"] = [x for x in st.session_state["items"] if x["uid"] != uid]
                     st.rerun()
 
-        # Persistir
-        items[idx] = it
+    if st.button("Agregar item"):
+        st.session_state["items"] = st.session_state["items"] + [_new_item()]
+        st.rerun()
 
-    st.session_state["items"] = items
-
-    # Totales
-    per_item, totals, calc_errors = compute_totals(items, tipo_factura)
-    if calc_errors:
-        for e in calc_errors:
-            st.warning(e)
+    # Totales (recalculados con el estado ya actualizado)
+    items_list = st.session_state["items"]
+    per_item_amounts, totals, calc_errors = compute_totals(items_list, tipo_factura)
 
     st.divider()
-    st.subheader("Totales")
-    if is_factura_con_iva(tipo_factura):
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Neto", f"$ {fmt_money(totals['total_net'])}")
-        c2.metric("Total IVA", f"$ {fmt_money(totals['total_iva'])}")
-        c3.metric("Total", f"$ {fmt_money(totals['total_gross'])}")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Cantidad de items", len(items_list))
+    if con_iva:
+        with c2:
+            st.metric("TOTAL Neto", fmt_money(float(totals["total_net"])))
+        with c3:
+            st.metric("TOTAL (con IVA 21%)", fmt_money(float(totals["total_gross"])))
+        st.caption(f"IVA 21% total: {fmt_money(float(totals['total_iva']))}")
     else:
-        st.metric("Total", f"$ {fmt_money(totals['total_gross'])}")
+        with c2:
+            st.metric("TOTAL", fmt_money(float(totals["total_gross"])))
+        with c3:
+            st.write("")
 
-    st.divider()
+    if calc_errors:
+        with st.expander("Ver advertencias de cálculo"):
+            for e in calc_errors:
+                st.write(f"- {e}")
 
 
+# -----------------------------
+# VALIDATION + PAYLOAD
+# -----------------------------
 def validate_all() -> list[str]:
-    """Devuelve lista de errores (strings)."""
     errors: list[str] = []
 
-    fac = st.session_state["facturacion"]
-    em = st.session_state["emisor"]
-    re = st.session_state["receptor"]
-    items = st.session_state["items"]
+    if not st.session_state["facturacion"]["tipo_factura"]:
+        errors.append("Tipo de Factura: es obligatorio seleccionar una opción.")
 
-    # Validaciones básicas
-    # (usamos utilidades si están disponibles)
-    try:
-        errors += validate_required(fac, ["tipo_factura", "servicio_producto"])
-    except Exception:
-        # fallback suave
-        if not fac.get("tipo_factura"):
-            errors.append("Falta Tipo de factura.")
-        if not fac.get("servicio_producto"):
-            errors.append("Falta Producto/Servicio.")
+    if not st.session_state["facturacion"]["fecha_inicio"]:
+        errors.append("Fecha de inicio: es obligatoria.")
+    if not st.session_state["facturacion"]["fecha_fin"]:
+        errors.append("Fecha de fin: es obligatoria.")
+    if not st.session_state["facturacion"]["fecha_vencimiento"]:
+        errors.append("Fecha de vencimiento: es obligatoria.")
 
-    # Emisor
-    if not em.get("razon_social", "").strip():
-        errors.append("Falta Razón social del emisor.")
-    if not is_digits_only(str(em.get("cuit", ""))):
-        errors.append("CUIT del emisor inválido (solo números).")
-    if not em.get("condicion_iva"):
-        errors.append("Falta Condición IVA del emisor.")
+    ok, msg = validate_required(st.session_state["emisor"]["razon_social"])
+    if not ok:
+        errors.append("Emisor - Nombre/razón social: " + msg)
 
-    # Receptor
-    if not re.get("razon_social", "").strip():
-        errors.append("Falta Razón social del receptor.")
-    if not is_digits_only(str(re.get("cuit_dni", ""))):
-        errors.append("CUIT/DNI del receptor inválido (solo números).")
-    if not re.get("condicion_iva"):
-        errors.append("Falta Condición IVA del receptor.")
-    if not re.get("condicion_venta"):
-        errors.append("Falta Condición de venta del receptor.")
+    if not is_digits_only(st.session_state["emisor"]["cuit"]):
+        errors.append("Emisor - CUIT: Debe contener solo números y no puede estar vacío.")
 
-    # Items
-    try:
-        errors += validate_items(items)
-    except Exception:
-        # fallback
-        if not items:
-            errors.append("Debe haber al menos 1 ítem.")
-        for i, it in enumerate(items, start=1):
-            if not str(it.get("descripcion", "")).strip():
-                errors.append(f"Ítem {i}: falta descripción.")
+    if not st.session_state["emisor"]["condicion_iva"]:
+        errors.append("Emisor - Condición frente al IVA: es obligatoria.")
+
+    if st.session_state["emisor"].get("requiere_delegacion", False):
+        clave = str(st.session_state["emisor"].get("clave_fiscal", "") or "").strip()
+        if not clave:
+            errors.append("Emisor - Clave Fiscal: es obligatoria si se requiere Delegación de servicios.")
+
+    ok, msg = validate_required(st.session_state["receptor"]["razon_social"])
+    if not ok:
+        errors.append("Receptor - Nombre/razón social: " + msg)
+
+    if not is_digits_only(st.session_state["receptor"]["cuit_dni"]):
+        errors.append("Receptor - CUIT/DNI: Debe contener solo números y no puede estar vacío.")
+
+    if not st.session_state["receptor"]["condicion_iva"]:
+        errors.append("Receptor - Condición frente al IVA: es obligatoria.")
+
+    if not st.session_state["receptor"]["condicion_venta"]:
+        errors.append("Receptor - Condición de venta: es obligatoria.")
+
+    if not st.session_state["facturacion"]["servicio_producto"]:
+        errors.append("Datos de Facturación - Servicio/Producto: es obligatorio.")
+
+    # Validación base de items (tu utils.py)
+    errors.extend(validate_items(st.session_state["items"]))
+
+    # Validar descuentos numéricos (coma/punto)
+    for i, it in enumerate(st.session_state["items"], start=1):
+        d_raw = str(it.get("descuento_bonificacion", "") or "").strip()
+        if d_raw != "":
             try:
-                float(it.get("cantidad", 0) or 0)
-                float(it.get("precio_unitario", 0) or 0)
-            except Exception:
-                errors.append(f"Ítem {i}: cantidad/precio inválidos.")
-
-    # Cálculos
-    _, _, calc_errors = compute_totals(items, fac.get("tipo_factura"))
-    errors += calc_errors
+                _ = parse_decimal_optional(d_raw)
+            except ValueError:
+                errors.append(f"Item {i}: 'Descuento/Bonificación' no es un número válido.")
 
     return errors
 
 
-def build_and_store_payload() -> dict:
-    """Construye payload con utils.build_payload y lo guarda en session_state['last_payload']."""
-    fac = make_json_safe(st.session_state["facturacion"])
-    em = make_json_safe(st.session_state["emisor"])
-    re = make_json_safe(st.session_state["receptor"])
-    items = make_json_safe(st.session_state["items"])
+def build_payload_from_session() -> dict:
+    # Copia “sanitizada” de facturacion con fechas como string
+    fact = dict(st.session_state["facturacion"])
+    fact["fecha_inicio"] = _date_to_str(fact["fecha_inicio"])
+    fact["fecha_fin"] = _date_to_str(fact["fecha_fin"])
+    fact["fecha_vencimiento"] = _date_to_str(fact["fecha_vencimiento"])
 
     payload = build_payload(
-        facturacion=fac,
-        emisor=em,
-        receptor=re,
-        items=items,
+        {
+            "emisor": st.session_state["emisor"],
+            "receptor": st.session_state["receptor"],
+            "facturacion": fact,
+            "items": st.session_state["items"],
+        }
     )
 
-    st.session_state["last_payload"] = payload
+    tipo_factura = st.session_state["facturacion"]["tipo_factura"]
+    per_item_amounts, totals, _ = compute_totals(st.session_state["items"], tipo_factura)
+
+    payload["totales"] = {
+        "moneda": "ARS",
+        "tipo_factura": tipo_factura,
+        "total_neto": totals["total_net"],
+        "total_iva_21": totals["total_iva"],
+        "total": totals["total_gross"],
+        "items_calculados": per_item_amounts,
+        "nota": "Factura A/B: total = neto + IVA 21%. Factura C: sin desglose de IVA.",
+    }
+
+    # Por las dudas: convertir cualquier date/datetime que haya quedado
+    payload = make_json_safe(payload)
     return payload
 
 
-def render_review():
-    st.subheader("Revisión")
+# -----------------------------
+# PAGES
+# -----------------------------
+def page_edit():
+    header()
 
-    errs = validate_all()
-    if errs:
-        st.error("Hay errores para corregir antes de enviar:")
-        for e in errs:
-            st.write(f"- {e}")
-        st.info("Volvé atrás, corregí y luego revisá nuevamente.")
-        return
+    render_tipo_factura()
+    st.divider()
 
-    payload = build_and_store_payload()
+    render_emisor()
+    st.divider()
 
-    st.success("Todo OK. Este es el JSON que se enviará:")
-    st.json(payload)
+    render_receptor()
+    st.divider()
 
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        if st.button("⬅️ Volver a editar"):
-            st.session_state["step"] = "edit"
-            st.rerun()
-    with c2:
-        if st.button("💾 Guardar JSON"):
-            try:
-                saved_path = save_json(payload)
-                st.session_state["last_saved_path"] = saved_path
-                st.success(f"Guardado en: {saved_path}")
-            except Exception as e:
-                st.error(f"No se pudo guardar JSON: {e}")
+    render_facturacion()
+    st.divider()
 
-    with c3:
-        if st.button("🚀 Enviar al webhook", type="primary"):
-            try:
-                resp = requests.post(WEBHOOK_URL, json=payload, timeout=45)
-                st.session_state["last_webhook_result"] = {
-                    "status_code": resp.status_code,
-                    "text": resp.text[:3000],
-                }
-                if 200 <= resp.status_code < 300:
-                    st.success("Enviado correctamente.")
-                    st.session_state["step"] = "confirmed"
-                    st.rerun()
-                else:
-                    st.error(f"El webhook respondió con status {resp.status_code}")
-                    st.code(resp.text)
-            except Exception as e:
-                st.error(f"Error enviando al webhook: {e}")
+    render_items()
 
+    st.divider()
+    if st.button("Finalizar"):
+        errs = validate_all()
+        if errs:
+            st.error("Hay errores en el formulario:")
+            for e in errs:
+                st.write(f"- {e}")
+            return
 
-def render_confirmed():
-    st.subheader("✅ Confirmado")
-
-    st.success("La operación fue enviada. Si querés, podés iniciar una nueva factura.")
-    if st.session_state.get("last_saved_path"):
-        st.caption(f"Último JSON guardado: {st.session_state['last_saved_path']}")
-
-    last = st.session_state.get("last_webhook_result")
-    if last:
-        st.caption("Respuesta del webhook:")
-        st.write(f"Status: {last.get('status_code')}")
-        st.code(last.get("text", ""))
-
-    if st.button("🧾 Nueva factura"):
-        # reset suave, conservando estructura
-        for k in ["facturacion", "emisor", "receptor", "items", "last_payload", "last_saved_path", "last_webhook_result"]:
-            if k in st.session_state:
-                del st.session_state[k]
-        st.session_state["step"] = "edit"
+        payload = build_payload_from_session()
+        st.session_state["last_payload"] = payload
+        st.session_state["step"] = "review"
         st.rerun()
 
 
-def main():
-    st.set_page_config(page_title="Facturación ARCA", layout="wide")
-    init_state()
-    header()
+def page_review():
+    st.title("Revisar Factura a generar:")
+    st.write("Visualizá todos los datos añadidos antes de confirmar.")
+    st.divider()
 
-    step = st.session_state.get("step", "edit")
+    payload = st.session_state["last_payload"]
+    if not payload:
+        st.warning("No hay datos para revisar. Volviendo a edición.")
+        st.session_state["step"] = "edit"
+        st.rerun()
 
-    if step == "edit":
-        render_tipo_factura()
-        render_emisor()
-        render_receptor()
-        render_items()
+    tipo_factura = (payload.get("datos_facturacion", {}) or {}).get("tipo_factura", None)
+    con_iva = is_factura_con_iva(tipo_factura)
 
-        errs = validate_all()
-        if errs:
-            st.warning(f"Hay {len(errs)} cosas a corregir antes de revisar.")
-        if st.button("✅ Revisar antes de enviar", type="primary"):
-            st.session_state["step"] = "review"
+    st.markdown("#### Resumen de items")
+    rows = []
+    items = payload.get("items", [])
+    calc_items = (payload.get("totales", {}) or {}).get("items_calculados", [])
+
+    for i, it in enumerate(items, start=1):
+        am = calc_items[i - 1] if i - 1 < len(calc_items) else {}
+        row = {
+            "N°": i,
+            "Código": it.get("codigo", ""),
+            "Descripción": it.get("descripcion", ""),
+            "Cantidad": it.get("cantidad", ""),
+            "Unidad": it.get("unidad_medida", ""),
+            "Modo Precio": ("Con IVA" if it.get("precio_modo") == "con_iva" else "Sin IVA") if con_iva else "-",
+            "Precio Ingresado": it.get("precio_unitario", ""),
+            "Descuento": it.get("descuento_bonificacion", ""),
+        }
+        if con_iva:
+            row.update(
+                {
+                    "Unit Neto": am.get("unit_net", None),
+                    "Unit IVA": am.get("unit_iva", None),
+                    "Unit Total": am.get("unit_gross", None),
+                    "Sub Neto": am.get("subtotal_net", None),
+                    "Sub IVA": am.get("subtotal_iva", None),
+                    "Sub Total": am.get("subtotal_gross", None),
+                }
+            )
+        else:
+            row.update({"Subtotal": am.get("subtotal_gross", None)})
+        rows.append(row)
+
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.divider()
+    tot = payload.get("totales", {}) or {}
+    st.markdown("#### Totales")
+    st.write(f"Tipo de factura: **{tot.get('tipo_factura', '-') }**")
+    if con_iva:
+        st.metric("TOTAL Neto", fmt_money(float(tot.get("total_neto", 0.0) or 0.0)))
+        st.metric("IVA 21%", fmt_money(float(tot.get("total_iva_21", 0.0) or 0.0)))
+        st.metric("TOTAL", fmt_money(float(tot.get("total", 0.0) or 0.0)))
+    else:
+        st.metric("TOTAL", fmt_money(float(tot.get("total", 0.0) or 0.0)))
+
+    st.divider()
+    st.markdown("#### Resumen completo (JSON)")
+    st.json(payload)
+
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Editar"):
+            st.session_state["step"] = "edit"
+            st.rerun()
+    with col2:
+        if st.button("Confirmar Datos a Facturar"):
+            st.session_state["step"] = "confirmed"
             st.rerun()
 
+
+def send_to_webhook(payload: dict) -> dict:
+    payload = make_json_safe(payload)  # seguridad extra
+    try:
+        r = requests.post(WEBHOOK_URL, json=payload, timeout=300)
+        content_type = (r.headers.get("content-type") or "").lower()
+        if "application/json" in content_type:
+            body = r.json()
+        else:
+            body = {"raw_text": r.text}
+        return {"ok": r.ok, "status_code": r.status_code, "response": body}
+    except requests.RequestException as e:
+        return {"ok": False, "status_code": None, "response": {"error": str(e)}}
+
+
+def page_confirmed():
+    st.title("Confirmación")
+    st.write("Si todo está correcto, enviá los datos al workflow de n8n.")
+    st.divider()
+
+    payload = st.session_state["last_payload"]
+    if not payload:
+        st.warning("No hay datos confirmados. Volviendo a edición.")
+        st.session_state["step"] = "edit"
+        st.rerun()
+
+    tot = payload.get("totales", {}) or {}
+    tipo_factura = tot.get("tipo_factura", None)
+    con_iva = is_factura_con_iva(tipo_factura)
+
+    st.markdown("#### Items (Resumen)")
+    calc_items = tot.get("items_calculados", []) or []
+    st.dataframe(
+        [
+            {
+                "Código": it.get("codigo", ""),
+                "Descripción": it.get("descripcion", ""),
+                "Cantidad": it.get("cantidad", ""),
+                "Unidad": it.get("unidad_medida", ""),
+                "Modo Precio": ("Con IVA" if it.get("precio_modo") == "con_iva" else "Sin IVA") if con_iva else "-",
+                "Precio Ingresado": it.get("precio_unitario", ""),
+                "Descuento": it.get("descuento_bonificacion", ""),
+                "Subtotal": (calc_items[i].get("subtotal_gross") if i < len(calc_items) else None),
+            }
+            for i, it in enumerate(payload.get("items", []))
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.divider()
+    st.markdown("#### Totales")
+    st.write(f"Tipo de factura: **{tipo_factura or '-'}**")
+    if con_iva:
+        st.metric("TOTAL Neto", fmt_money(float(tot.get("total_neto", 0.0) or 0.0)))
+        st.metric("IVA 21%", fmt_money(float(tot.get("total_iva_21", 0.0) or 0.0)))
+        st.metric("TOTAL", fmt_money(float(tot.get("total", 0.0) or 0.0)))
+    else:
+        st.metric("TOTAL", fmt_money(float(tot.get("total", 0.0) or 0.0)))
+
+    st.divider()
+    st.markdown("#### Datos confirmados (JSON)")
+    st.json(payload)
+
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Volver a Editar"):
+            st.session_state["step"] = "edit"
+            st.rerun()
+
+    with col2:
+        if st.button("Enviar Datos"):
+            safe_payload = make_json_safe(payload)
+            path = save_json(safe_payload, folder="data")  # <- ahora no rompe con date
+            st.session_state["last_saved_path"] = str(path)
+
+            result = send_to_webhook(safe_payload)
+            st.session_state["last_webhook_result"] = result
+            st.rerun()
+
+    if st.session_state["last_saved_path"]:
+        st.success(f"JSON guardado en: {st.session_state['last_saved_path']}")
+
+    if st.session_state["last_webhook_result"]:
+        res = st.session_state["last_webhook_result"]
+        if res["ok"]:
+            st.success("Respuesta del workflow (éxito):")
+        else:
+            st.error("Respuesta del workflow (error):")
+        st.write(f"Status code: {res['status_code']}")
+        st.json(res["response"])
+
+
+# -----------------------------
+# MAIN
+# -----------------------------
+def main():
+    st.set_page_config(page_title="Facturación Automatizada", layout="wide")
+    init_state()
+
+    step = st.session_state["step"]
+    if step == "edit":
+        page_edit()
     elif step == "review":
-        render_review()
-
+        page_review()
     elif step == "confirmed":
-        render_confirmed()
-
+        page_confirmed()
     else:
         st.session_state["step"] = "edit"
         st.rerun()
